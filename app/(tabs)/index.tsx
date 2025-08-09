@@ -150,9 +150,15 @@ export default function ObjectDetectorScreen() {
         </TouchableOpacity>
 
         {state.selectedImage && !state.isAnalyzing && (
-          <TouchableOpacity style={[styles.button, styles.analyzeButton]} onPress={analyzeImage}>
-            <ThemedText style={styles.buttonText}>🔍 解析する</ThemedText>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity style={[styles.button, styles.analyzeButton]} onPress={analyzeImage}>
+              <ThemedText style={styles.buttonText}>🔍 解析する</ThemedText>
+            </TouchableOpacity>
+            
+            <TouchableOpacity style={[styles.button, styles.clearButton]} onPress={() => setState(prev => ({ ...prev, selectedImage: null, analysisResult: null }))}>
+              <ThemedText style={styles.buttonText}>🗑️ 画像をクリア</ThemedText>
+            </TouchableOpacity>
+          </>
         )}
 
         {state.isAnalyzing && (
@@ -216,6 +222,9 @@ const styles = StyleSheet.create({
   resetButton: {
     backgroundColor: '#FF9500',
     marginTop: 10,
+  },
+  clearButton: {
+    backgroundColor: '#FF3B30',
   },
   buttonText: {
     color: 'white',

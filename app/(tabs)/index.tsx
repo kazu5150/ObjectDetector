@@ -1,75 +1,243 @@
+import { useState } from 'react';
+import { StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
 import { Image } from 'expo-image';
-import { Platform, StyleSheet } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
+import OpenAI from 'openai';
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 
-export default function HomeScreen() {
+interface AppState {
+  selectedImage: string | null;
+  analysisResult: string | null;
+  isAnalyzing: boolean;
+}
+
+export default function ObjectDetectorScreen() {
+  const [state, setState] = useState<AppState>({
+    selectedImage: null,
+    analysisResult: null,
+    isAnalyzing: false,
+  });
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+      });
+
+      if (!result.canceled) {
+        setState(prev => ({
+          ...prev,
+          selectedImage: result.assets[0].uri,
+          analysisResult: null,
+        }));
+      }
+    } catch {
+      Alert.alert('エラー', 'ギャラリーからの画像選択に失敗しました。');
+    }
+  };
+
+  const takePhoto = async () => {
+    try {
+      const permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      
+      if (permissionResult.granted === false) {
+        Alert.alert('権限エラー', 'カメラへのアクセス権限が必要です。設定からアクセスを許可してください。');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+      });
+
+      if (!result.canceled) {
+        setState(prev => ({
+          ...prev,
+          selectedImage: result.assets[0].uri,
+          analysisResult: null,
+        }));
+      }
+    } catch {
+      Alert.alert('エラー', '写真の撮影に失敗しました。');
+    }
+  };
+
+  const analyzeImage = async () => {
+    if (!state.selectedImage) return;
+
+    setState(prev => ({ ...prev, isAnalyzing: true }));
+
+    try {
+      // Convert image to base64
+      const base64Image = await FileSystem.readAsStringAsync(state.selectedImage, {
+        encoding: FileSystem.EncodingType.Base64,
+      });
+
+      const client = new OpenAI({
+        apiKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY || 'your-api-key-here',
+      });
+
+      const response = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: "この画像に写っている物体を日本語で識別して、名前と簡単な説明を教えてください。",
+              },
+              {
+                type: "image_url",
+                image_url: {
+                  url: `data:image/jpeg;base64,${base64Image}`,
+                },
+              },
+            ],
+          },
+        ],
+      });
+
+      const result = response.choices[0]?.message?.content || "解析結果を取得できませんでした。";
+      setState(prev => ({
+        ...prev,
+        analysisResult: result,
+        isAnalyzing: false,
+      }));
+    } catch (error) {
+      console.error('Analysis error:', error);
+      setState(prev => ({
+        ...prev,
+        analysisResult: "解析に失敗しました。ネットワーク接続やAPIキーを確認してください。",
+        isAnalyzing: false,
+      }));
+    }
+  };
+
+  const resetState = () => {
+    setState({
+      selectedImage: null,
+      analysisResult: null,
+      isAnalyzing: false,
+    });
+  };
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
+    <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
+      <ThemedView style={styles.header}>
+        <ThemedText type="title">物体判別アプリ</ThemedText>
+        <ThemedText>写真を撮るかギャラリーから選んで物体を識別します</ThemedText>
       </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12',
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
+
+      {state.selectedImage && (
+        <ThemedView style={styles.imageContainer}>
+          <Image source={{ uri: state.selectedImage }} style={styles.selectedImage} />
+        </ThemedView>
+      )}
+
+      <ThemedView style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.button} onPress={takePhoto}>
+          <ThemedText style={styles.buttonText}>📷 写真を撮る</ThemedText>
+        </TouchableOpacity>
+
+        <TouchableOpacity style={styles.button} onPress={pickImage}>
+          <ThemedText style={styles.buttonText}>🖼️ ギャラリーから選ぶ</ThemedText>
+        </TouchableOpacity>
+
+        {state.selectedImage && !state.isAnalyzing && (
+          <TouchableOpacity style={[styles.button, styles.analyzeButton]} onPress={analyzeImage}>
+            <ThemedText style={styles.buttonText}>🔍 解析する</ThemedText>
+          </TouchableOpacity>
+        )}
+
+        {state.isAnalyzing && (
+          <ThemedView style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#007AFF" />
+            <ThemedText>解析中...</ThemedText>
+          </ThemedView>
+        )}
       </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          {`Tap the Explore tab to learn more about what's included in this starter app.`}
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          {`When you're ready, run `}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+
+      {state.analysisResult && (
+        <ThemedView style={styles.resultContainer}>
+          <ThemedText type="subtitle">解析結果:</ThemedText>
+          <ThemedText style={styles.resultText}>{state.analysisResult}</ThemedText>
+        </ThemedView>
+      )}
+
+      {(state.selectedImage || state.analysisResult) && (
+        <TouchableOpacity style={[styles.button, styles.resetButton]} onPress={resetState}>
+          <ThemedText style={styles.buttonText}>🔄 もう一度</ThemedText>
+        </TouchableOpacity>
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
+  container: {
+    flex: 1,
+  },
+  contentContainer: {
+    padding: 20,
+  },
+  header: {
     alignItems: 'center',
+    marginBottom: 30,
     gap: 8,
   },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
+  imageContainer: {
+    alignItems: 'center',
+    marginBottom: 20,
   },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
+  selectedImage: {
+    width: 300,
+    height: 225,
+    borderRadius: 10,
+  },
+  buttonContainer: {
+    gap: 15,
+    marginBottom: 20,
+  },
+  button: {
+    backgroundColor: '#007AFF',
+    padding: 15,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  analyzeButton: {
+    backgroundColor: '#34C759',
+  },
+  resetButton: {
+    backgroundColor: '#FF9500',
+    marginTop: 10,
+  },
+  buttonText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    alignItems: 'center',
+    gap: 10,
+    padding: 20,
+  },
+  resultContainer: {
+    backgroundColor: '#f8f9fa',
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 20,
+  },
+  resultText: {
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
   },
 });

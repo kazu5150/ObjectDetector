@@ -84,28 +84,26 @@ export default function ObjectDetectorScreen() {
         apiKey: process.env.EXPO_PUBLIC_OPENAI_API_KEY || 'your-api-key-here',
       });
 
-      const response = await client.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
+      const response = await client.responses.create({
+        model: "gpt-5",
+        input: [
           {
             role: "user",
             content: [
               {
-                type: "text",
+                type: "input_text",
                 text: "この画像に写っている物体を日本語で識別して、名前と簡単な説明を教えてください。",
               },
               {
-                type: "image_url",
-                image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`,
-                },
+                type: "input_image",
+                image_url: `data:image/jpeg;base64,${base64Image}`,
               },
             ],
           },
         ],
       });
 
-      const result = response.choices[0]?.message?.content || "解析結果を取得できませんでした。";
+      const result = response.output_text || "解析結果を取得できませんでした。";
       setState(prev => ({
         ...prev,
         analysisResult: result,
